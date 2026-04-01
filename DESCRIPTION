@@ -11,9 +11,9 @@ Description: Implements the TESSERA framework for detecting regime boundaries
     manufacturing, and high-performance computing domains. Methods described
     in Tonini (2026) <doi:PENDING>.
 License: MIT + file LICENSE
-URL: https://github.com/jtonini/tessera,
-    https://jtonini.github.io/tessera
-BugReports: https://github.com/jtonini/tessera/issues
+URL: https://github.com/jtonini/tessera-r,
+    https://jtonini.github.io/tessera-r
+BugReports: https://github.com/jtonini/tessera-r/issues
 Depends:
     R (>= 4.1.0)
 Imports:
