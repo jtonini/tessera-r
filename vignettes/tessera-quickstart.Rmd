@@ -1,0 +1,189 @@
+---
+title: "TESSERA Quickstart: Coral Bleaching Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{TESSERA Quickstart: Coral Bleaching Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+has_coral <- tryCatch({
+  data(coral_example, package = "tessera")
+  TRUE
+}, error = function(e) FALSE)
+```
+
+## Overview
+
+TESSERA (Topology-Enhanced Similarity and Structure for Entity Regime
+Analysis) detects regime boundaries in complex systems by analyzing how
+similarity network topology shifts over time. This vignette demonstrates the
+full Phase 1 pipeline using coral bleaching data.
+
+## The Pipeline
+
+TESSERA's workflow has three analytical stages (Phase 1):
+
+1. **Characterize** — bin entities temporally, prepare features
+2. **Discover** — compute similarity, build networks, detect communities
+3. **Quantify** — measure regime divergence across bins
+
+```{r library}
+library(tessera)
+```
+
+## Load Data
+
+The package includes a curated subset of the Global Coral Bleaching Database
+(van Woesik et al. 2022), stratified across temporal quartiles and bleaching
+outcomes.
+
+```{r load-data}
+if (has_coral) {
+  data(coral_example)
+  df <- coral_example
+  time_col <- "year"
+  cat("Coral bleaching subset:", nrow(df), "records,",
+      ncol(df), "features\n")
+  cat("Year range:", range(df[[time_col]]), "\n")
+} else {
+  # Fallback: synthetic data with ecological structure
+  set.seed(42)
+  n <- 500
+  df <- data.frame(
+    year = sample(1990:2020, n, replace = TRUE),
+    sst = rnorm(n, 27, 2),
+    depth = runif(n, 1, 40),
+    turbidity = rlnorm(n, 1, 0.5),
+    coral_cover = rbeta(n, 2, 5)
+  )
+  time_col <- "year"
+  cat("Using synthetic data (coral_example not available)\n")
+}
+```
+
+## Quick Start
+
+The fastest path is the `tessera()` wrapper with a domain preset:
+
+```{r quick}
+result <- tessera(df, time_col = time_col)
+result
+```
+
+## Step-by-Step Pipeline
+
+For full control, use the pipeline functions individually. Each returns an
+inspectable S3 object.
+
+### Step 1: Characterize
+
+```{r characterize}
+char <- tessera_characterize(df, time_col = time_col, n_bins = 4)
+char
+```
+
+Key decisions at this stage:
+
+- **`bin_method = "quantile"`** (default): ensures balanced entity counts.
+  Critical for datasets like coral bleaching where early decades have sparse
+  records.
+- **`scale = TRUE`** (default): standardizes features within each bin so that
+  variables on different scales contribute equally to similarity.
+- **`min_entities = 30`**: bins with fewer entities are merged automatically.
+
+```{r char-summary}
+summary(char)
+```
+
+### Step 2a: Compute Similarity
+
+```{r similarity}
+sim <- tessera_similarity(char,
+                          measures = c("bray_curtis", "simpson"),
+                          k = 15)
+sim
+```
+
+The ecology preset uses Bray-Curtis (from `vegan`, the standard ecological
+dissimilarity) and Simpson (quantile-bin overlap — TESSERA's signature
+measure). The sparse kNN representation keeps only the top-k neighbors per
+entity, which is essential for large datasets.
+
+### Step 2b: Build Networks
+
+```{r network}
+net <- tessera_network(sim, method = "knn", k = 12)
+net
+```
+
+### Step 3a: Detect Communities
+
+```{r communities}
+com <- tessera_communities(net, algorithm = "louvain", resolution = 1.0)
+com
+```
+
+Communities represent groups of entities with similar feature profiles.
+In ecological terms, these correspond to reef assemblages or environmental
+regimes.
+
+### Step 3b: Quantify Regime Divergence
+
+```{r divergence}
+div <- tessera_divergence(com, method = "nmi", reference = "adjacent")
+div
+```
+
+Regime divergence (RD) measures how community structure changes between
+adjacent temporal bins. High RD indicates a regime boundary — an "ecotone"
+in biogeographical terminology.
+
+### Visualization
+
+```{r plot-div, fig.cap = "Regime divergence across temporal bins"}
+plot(div)
+```
+
+## Interpreting Results
+
+TESSERA identifies three failure geometries that manifest as distinct RD
+patterns:
+
+- **Boundary-concentrated**: High RD in one or two transitions, low
+  elsewhere. Indicates a clear regime shift (e.g., a bleaching threshold
+  crossing).
+- **Isolated cluster**: A sudden spike at one bin transition. Suggests an
+  anomalous period rather than a sustained shift.
+- **Diffuse**: Gradually increasing RD across all transitions. Indicates
+  continuous environmental drift.
+
+## Using the Full Coral Database
+
+The bundled `coral_example` is a 500-record subset. To analyze the full
+Global Coral Bleaching Database (31,199 records):
+
+```{r real-data, eval = FALSE}
+library(DBI)
+con <- dbConnect(RSQLite::SQLite(), "coral_bleaching.sqlite")
+coral_full <- dbReadTable(con, "bleaching_records")
+dbDisconnect(con)
+
+result <- tessera(coral_full,
+                  time_col = "year",
+                  preset = "ecology")
+```
+
+## Next Steps
+
+- Use `plot(result, which = "all")` for a diagnostic panel
+- Access intermediate objects: `result$communities$by_bin$bin_1$membership`
+- Compare similarity measures: run with `measures = "all"`
+- Adjust resolution to find finer or coarser community structure

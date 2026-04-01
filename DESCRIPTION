@@ -1,0 +1,41 @@
+Package: tessera
+Title: Topology-Enhanced Similarity and Structure for Entity Regime Analysis
+Version: 0.1.0
+Authors@R:
+    person("João", "Tonini", email = "jtonini@richmond.edu",
+           role = c("aut", "cre"), comment = c(ORCID = "0000-0002-4730-3805"))
+Description: Implements the TESSERA framework for detecting regime boundaries
+    in complex systems using similarity network topology. Computes multi-measure
+    entity similarity, constructs and analyzes networks, identifies community
+    structure, and quantifies regime divergence. Applicable across ecology,
+    manufacturing, and high-performance computing domains. Methods described
+    in Tonini (2026) <doi:PENDING>.
+License: MIT + file LICENSE
+URL: https://github.com/jtonini/tessera,
+    https://jtonini.github.io/tessera
+BugReports: https://github.com/jtonini/tessera/issues
+Depends:
+    R (>= 4.1.0)
+Imports:
+    igraph (>= 1.5.0),
+    vegan (>= 2.6),
+    ape (>= 5.7),
+    Matrix,
+    stats,
+    graphics,
+    grDevices,
+    utils
+Suggests:
+    leiden (>= 0.4.0),
+    kernlab,
+    ggplot2 (>= 3.4.0),
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    FNN
+VignetteBuilder: knitr
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+LazyData: true
+Config/testthat/edition: 3
