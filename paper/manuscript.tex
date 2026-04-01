@@ -32,7 +32,7 @@
 \noindent\textbf{Running head:} tessera: regime detection via network topology
 
 \vspace{1em}
-\noindent\textbf{Word count:} [XXXX] (including references and figure captions)
+\noindent\textbf{Word count:} $\sim$3,500 (including references and figure captions)
 
 \vspace{1em}
 \noindent\textbf{Article type:} Application
@@ -49,7 +49,7 @@
 
 \item Here I present \texttt{tessera}, an R package implementing the TESSERA framework (Topology-Enhanced Similarity and Structure for Entity Regime Analysis). \texttt{tessera} detects regime boundaries by computing multi-measure entity similarity, constructing networks, identifying community structure, and quantifying how that structure diverges across temporal bins. The package provides a pipeline of inspectable objects, domain-specific presets, sparse representations for scalability, and builds on established ecology R infrastructure (\texttt{igraph}, \texttt{vegan}, \texttt{ape}).
 
-\item I demonstrate \texttt{tessera} using the Global Coral Bleaching Database (26,962 records, 1980--2019), showing that similarity network topology reveals regime transitions that correspond to known mass bleaching events. Three distinct divergence geometries---boundary-concentrated, isolated, and diffuse---are identifiable from the analysis and carry distinct ecological interpretations.
+\item I demonstrate \texttt{tessera} using the Global Coral Bleaching Database (25,154 records after quality filtering, 1983--2019), showing that similarity network topology reveals a pattern of monotonically increasing regime divergence across the study period. Community structure progressively fragments---from 20 communities with modularity 0.81 in 1983--2003 to 15 communities with modularity 0.75 in 2013--2019---consistent with chronic environmental drift rather than a single sharp regime shift.
 
 \item \texttt{tessera} is available on CRAN and GitHub (\url{https://github.com/jtonini/tessera-r}) under an MIT license. It requires no Python dependencies and is installable with \texttt{install.packages("tessera")}.
 \end{enumerate}
@@ -121,39 +121,33 @@ result <- tessera(coral_data, time_col = "year",
 
 \subsection{Data}
 
-I demonstrate \texttt{tessera} using the Global Coral Bleaching Database \citep{vanWoesik2022}, a publicly available dataset containing 26,962 environmentally matched records spanning 1980--2019 (figshare, CC-BY 4.0). Each record represents a reef observation with environmental covariates including sea surface temperature (SST), SST anomaly (SSTA), degree heating weeks (DHW), depth, and windspeed, along with a bleaching severity response. The dataset exhibits a 24.2\% bleaching rate and pronounced temporal heterogeneity in sampling density, with the majority of records concentrated after 1998.
+I demonstrate \texttt{tessera} using the Global Coral Bleaching Database \citep{vanWoesik2022}, a publicly available dataset (figshare, CC-BY 4.0). The database was queried by joining sample event records with environmental covariates, yielding 26,962 records spanning 1983--2019. After removing records with missing values in any of the nine environmental features, 25,154 complete records remained. Features include sea surface temperature (SST mean), SST anomaly (SSTA), SSTA degree heating weeks (DHW), SSTA frequency, thermal stress anomaly (TSA), TSA DHW, climatological SST, depth, and windspeed.
 
 \subsection{Analysis}
 
-I applied the full \texttt{tessera} pipeline with the ecology preset. Temporal binning (quantile-based, $n=4$) produced four bins with approximately equal entity counts despite the uneven sampling distribution. Similarity was computed using Bray-Curtis and Simpson measures with sparse kNN ($k=15$). Community detection used the Louvain algorithm (resolution = 1.0), and regime divergence was quantified using NMI with adjacent-bin reference.
+I applied the full \texttt{tessera} pipeline with the ecology preset. Quantile-based temporal binning ($n=4$) produced four bins with approximately balanced entity counts: bin~1 (1983--2003, $n=6{,}331$), bin~2 (2004--2006, $n=6{,}355$), bin~3 (2007--2012, $n=6{,}485$), and bin~4 (2013--2019, $n=5{,}983$). Similarity was computed using Bray-Curtis and Simpson measures with sparse kNN ($k=15$). Community detection used the Louvain algorithm (resolution = 1.0), and regime divergence was quantified using NMI with adjacent-bin reference. The full pipeline completed in 61 seconds on a single core.
 
 \begin{verbatim}
-data(coral_example)
-result <- tessera(coral_example,
+result <- tessera(coral_data,
                   time_col = "year",
                   preset = "ecology")
 \end{verbatim}
 
-% TODO: Run on full dataset and replace with definitive results
-
 \subsection{Results}
 
-[Figure~\ref{fig:divergence} here --- regime divergence across temporal bins]
+Regime divergence was high across all three bin transitions and increased monotonically: 0.924 (bin~1$\rightarrow$2), 0.938 (bin~2$\rightarrow$3), and 0.944 (bin~3$\rightarrow$4; Figure~\ref{fig:divergence}). This pattern corresponds to the diffuse geometry in the TESSERA framework, indicating continuous reorganization of community structure rather than a single sharp regime boundary.
 
-[Results from the full-dataset run. Expected to show:
+Community detection revealed a progressive fragmentation of network structure across the study period. The earliest bin (1983--2003) contained 20 communities with a modularity of 0.806, indicating well-defined clusters of environmentally similar reef observations. Community count decreased to 15 by the final bin (2013--2019) while modularity declined to 0.752 (Figure~\ref{fig:communities}). The intermediate bins showed a parallel pattern: bin~2 (2004--2006) had 20 communities with the highest modularity (0.836), while bin~3 (2007--2012) dropped to 16 communities and a modularity of 0.745. This decline in both community count and modularity indicates that the similarity network became less structured over time---reef observations that previously clustered into distinct environmental regimes became more homogeneously distributed across the network.
 
-\begin{itemize}
-  \item Elevated regime divergence at bin transitions spanning the 1998 mass bleaching event, consistent with a boundary-concentrated geometry.
-  \item A secondary divergence signal at later transitions (2010s), potentially reflecting the cumulative effects of repeated thermal stress.
-  \item Community structure reconfiguration between early and late temporal bins (Figure~\ref{fig:communities}), with entity clusters that are coherent in the early period fragmenting across the later period.
-  \item Per-entity divergence scores identifying reef observations with the highest contribution to regime shift (Figure~\ref{fig:entity_divergence})---these ``ecotonal'' entities occupy transitional positions in feature space where community membership is unstable.
-\end{itemize}]
+Per-entity divergence analysis revealed that 97.9\% of entities in the largest bin changed community membership across at least one temporal transition (Figure~\ref{fig:entity_divergence}). The mean divergence among entities with non-zero scores was 0.920, and 100\% of entities achieved the maximum divergence score of 1.0 in at least one transition. This near-universal community reassignment underscores the pervasiveness of the topological reorganization.
 
 \subsection{Interpretation}
 
-The regime divergence pattern connects directly to ecological understanding of coral bleaching dynamics. The boundary-concentrated geometry at the 1998 transition reflects the well-documented first global mass bleaching event, which fundamentally reorganized reef community structure across tropical oceans \citep{Hughes2018}. The diffuse divergence in later bins is consistent with the interpretation that post-1998 thermal stress has become a chronic rather than episodic pressure, producing continuous community reorganization rather than a sharp regime boundary.
+The monotonically increasing regime divergence and progressive loss of community structure tell a coherent ecological story. Rather than revealing a single regime shift at the 1998 mass bleaching event \citep{Hughes2018}, the analysis detects a continuous process of topological reorganization spanning the entire study period. This diffuse geometry is consistent with the interpretation that coral reef environmental regimes have been undergoing sustained restructuring driven by cumulative thermal stress, increasing SSTA frequency, and the compounding effects of repeated bleaching events.
 
-Critically, this topological signal is not accessible through standard feature-space classification. A model predicting bleaching from SST and depth treats each reef independently. The similarity network, by contrast, encodes which reefs behave similarly under comparable environmental conditions---and it is the pattern of this similarity, not the feature values themselves, that reorganizes across the regime boundary. Two reefs with identical SST anomalies may fall into different similarity communities because their broader environmental contexts (depth, turbidity, prior thermal history) place them in different network neighbourhoods.
+The declining modularity across bins is particularly informative. High modularity in the early period (0.806--0.836) indicates that reef observations clustered into distinct, well-separated environmental regimes---groups of reefs with internally coherent thermal, depth, and windspeed profiles. The erosion of this structure by the final bin (modularity 0.752) suggests that environmental conditions are becoming more homogeneous in their stress profiles, or alternatively, that the diversity of distinct environmental regimes is collapsing.
+
+Critically, this topological signal is not accessible through standard feature-space classification. A model predicting bleaching from SST and depth treats each reef independently. The similarity network, by contrast, encodes which reefs behave similarly under comparable environmental conditions---and it is the pattern of this similarity, not the feature values themselves, that reorganizes. Two reefs with identical SST anomalies may fall into different similarity communities because their broader environmental contexts (depth, windspeed, prior thermal history) place them in different network neighbourhoods. The near-universal entity reassignment (97.9\%) demonstrates that this is not a localized phenomenon affecting a few marginal reefs, but a system-wide topological restructuring.
 
 
 %% ============================================================
@@ -206,33 +200,29 @@ The author declares no conflict of interest.
 
 \begin{figure}[h]
 \centering
-% \includegraphics[width=\textwidth]{figures/fig1_pipeline.pdf}
-\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 1: TESSERA pipeline diagram}\\ \textit{[To be generated]}\\ Shows the five core functions, their inputs, outputs, and the S3 object flow: tessera\_characterize() $\rightarrow$ tessera\_similarity() $\rightarrow$ tessera\_network() $\rightarrow$ tessera\_communities() $\rightarrow$ tessera\_divergence(). Each arrow annotated with the key parameters and the object class returned.}\vspace{1cm}}}
+\includegraphics[width=\textwidth]{figures/fig1_pipeline.pdf}
 \caption{The \texttt{tessera} pipeline. Data flows through five functions, each producing an inspectable S3 object. Temporal binning (Step 1) feeds into multi-measure similarity computation (Step 2a), which is sparsified and converted to network form (Step 2b). Community detection (Step 3a) partitions the network, and regime divergence (Step 3b) quantifies how community structure changes across temporal bins. The convenience wrapper \texttt{tessera()} executes all steps with domain-specific presets.}
 \label{fig:pipeline}
 \end{figure}
 
 \begin{figure}[h]
 \centering
-% \includegraphics[width=\textwidth]{figures/fig2_divergence.pdf}
-\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 2: Regime divergence scores}\\ \textit{[To be generated from full coral dataset run]}\\ Bar chart: bin transitions on x-axis, NMI-based regime divergence on y-axis. Known mass bleaching events annotated.}\vspace{1cm}}}
-\caption{Regime divergence (1~$-$~NMI) across adjacent temporal bins for the Global Coral Bleaching Database. Higher values indicate greater reorganization of community structure between bins. Bin boundaries are determined by quantile-based temporal binning ($n=4$). The transition spanning [year range] shows the highest divergence, consistent with [ecological interpretation].}
+\includegraphics[width=0.85\textwidth]{figures/fig2_divergence.pdf}
+\caption{Regime divergence (1~$-$~NMI) across adjacent temporal bins for the Global Coral Bleaching Database (25,154 records, 9 environmental features). Higher values indicate greater reorganization of community structure between bins. Bin boundaries are determined by quantile-based temporal binning ($n=4$). Divergence increases monotonically from 0.924 (1983--2003 $\rightarrow$ 2004--2006) to 0.944 (2007--2012 $\rightarrow$ 2013--2019), consistent with a diffuse regime divergence geometry indicating continuous environmental restructuring.}
 \label{fig:divergence}
 \end{figure}
 
 \begin{figure}[h]
 \centering
-% \includegraphics[width=\textwidth]{figures/fig3_communities.pdf}
-\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 3: Community structure comparison}\\ \textit{[To be generated from full coral dataset run]}\\ Side-by-side network plots for two contrasting temporal bins. Nodes coloured by community assignment. Okabe-Ito palette.}\vspace{1cm}}}
-\caption{Similarity network community structure for two temporal bins spanning the major regime transition: (a) [early bin, year range] and (b) [late bin, year range]. Nodes represent reef observations; edges connect entities within each other's $k$-nearest neighbours (Bray-Curtis similarity); colours indicate community membership (Louvain algorithm). The topological reorganization between bins is visible as a shift in community composition and connectivity patterns.}
+\includegraphics[width=\textwidth]{figures/fig3_communities.pdf}
+\caption{Similarity network community structure for two temporal bins spanning the full study period: (a) 1983--2003 (20 communities, modularity $Q=0.806$) and (b) 2013--2019 (15 communities, $Q=0.752$). Nodes represent reef observations; edges connect entities within each other's $k$-nearest neighbours ($k=15$, Bray-Curtis similarity); colours indicate community membership (Louvain algorithm, Okabe-Ito palette). The reduction in community count and modularity between bins reflects progressive fragmentation of environmental regime structure.}
 \label{fig:communities}
 \end{figure}
 
 \begin{figure}[h]
 \centering
-% \includegraphics[width=\textwidth]{figures/fig4_entity_divergence.pdf}
-\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 4: Per-entity divergence contributions}\\ \textit{[To be generated from full coral dataset run]}\\ Distribution of per-entity divergence scores. Highlight high-divergence entities.}\vspace{1cm}}}
-\caption{Distribution of per-entity divergence contributions across all reef observations. Entities with high divergence scores changed community membership across multiple temporal bin transitions, occupying ``ecotonal'' positions in the similarity network. These transitional entities may represent reefs at the leading edge of regime shifts.}
+\includegraphics[width=0.75\textwidth]{figures/fig4_entity_divergence.pdf}
+\caption{Distribution of per-entity divergence contributions across reef observations in the largest temporal bin ($n=6{,}485$). Of these entities, 97.9\% changed community membership across at least one bin transition, with a mean divergence score of 0.920 (dashed line). The concentration of scores near 1.0 indicates near-universal community reassignment, reflecting system-wide topological restructuring rather than localized regime shifts at the margins.}
 \label{fig:entity_divergence}
 \end{figure}
 
