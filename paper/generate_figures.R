@@ -137,22 +137,34 @@ cat("  -> fig1_pipeline.pdf\n")
 cat("Generating Figure 2 (divergence)...\n")
 
 div <- result$divergence
+bins <- result$characterize$bins
+
+# Build human-readable transition labels from bin year ranges
+trans_labels <- character(length(div$scores))
+for (i in seq_along(div$scores)) {
+  yr1 <- paste0(bins$time_min[i], "-", bins$time_max[i])
+  yr2 <- paste0(bins$time_min[i + 1], "-", bins$time_max[i + 1])
+  trans_labels[i] <- paste0(yr1, "\n\U2192 ", yr2)
+}
+
 div_df <- data.frame(
-  transition = factor(names(div$scores), levels = names(div$scores)),
+  transition = factor(trans_labels, levels = trans_labels),
   divergence = div$scores
 )
 
-bins <- result$characterize$bins
-
 p2 <- ggplot(div_df, aes(x = transition, y = divergence)) +
-  geom_col(fill = "#D55E00", alpha = 0.85, width = 0.6) +
-  geom_point(size = 3, color = "#D55E00") +
-  labs(x = "Bin Transition",
-       y = "Regime Divergence (1 - NMI)",
-       title = NULL) +
+  geom_segment(aes(xend = transition, y = 0.90, yend = divergence),
+               color = "#D55E00", linewidth = 1.5) +
+  geom_point(size = 5, color = "#D55E00") +
+  geom_text(aes(label = sprintf("%.3f", divergence)),
+            vjust = -1.2, size = 4, color = "grey30") +
+  scale_y_continuous(limits = c(0.90, 0.96),
+                     breaks = seq(0.90, 0.96, 0.01)) +
+  labs(x = NULL,
+       y = "Regime Divergence (1 - NMI)") +
   theme_minimal(base_size = 14) +
   theme(
-    axis.text.x = element_text(angle = 30, hjust = 1, size = 10),
+    axis.text.x = element_text(size = 10, lineheight = 0.9),
     panel.grid.major.x = element_blank(),
     panel.grid.minor = element_blank()
   )
