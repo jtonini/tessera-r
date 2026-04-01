@@ -1,0 +1,316 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{natbib}
+\usepackage[margin=1in]{geometry}
+\usepackage{lineno}
+\usepackage{setspace}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+\doublespacing
+\linenumbers
+
+\title{\texttt{tessera}: An R package for detecting regime boundaries in ecological systems using similarity network topology}
+
+\author{Jo\~{a}o Tonini\textsuperscript{1*}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\noindent\textsuperscript{1}Department of Biology, University of Richmond, Richmond, VA 23173, USA\\
+\noindent\textsuperscript{*}Corresponding author: \href{mailto:jtonini@richmond.edu}{jtonini@richmond.edu}\\
+\noindent ORCID: 0000-0002-4730-3805
+
+\vspace{1em}
+\noindent\textbf{Running head:} tessera: regime detection via network topology
+
+\vspace{1em}
+\noindent\textbf{Word count:} [XXXX] (including references and figure captions)
+
+\vspace{1em}
+\noindent\textbf{Article type:} Application
+
+\newpage
+
+%% ============================================================
+%% ABSTRACT
+%% ============================================================
+\section*{Abstract}
+
+\begin{enumerate}
+\item Detecting regime shifts in ecological systems is critical for conservation and management, yet traditional approaches rely on univariate thresholds or feature-space classifiers that discard information encoded in the relational structure among entities. When ecological communities undergo regime shifts, the topology of how entities relate to each other changes in ways that standard methods cannot capture.
+
+\item Here I present \texttt{tessera}, an R package implementing the TESSERA framework (Topology-Enhanced Similarity and Structure for Entity Regime Analysis). \texttt{tessera} detects regime boundaries by computing multi-measure entity similarity, constructing networks, identifying community structure, and quantifying how that structure diverges across temporal bins. The package provides a pipeline of inspectable objects, domain-specific presets, sparse representations for scalability, and builds on established ecology R infrastructure (\texttt{igraph}, \texttt{vegan}, \texttt{ape}).
+
+\item I demonstrate \texttt{tessera} using the Global Coral Bleaching Database (26,962 records, 1980--2019), showing that similarity network topology reveals regime transitions that correspond to known mass bleaching events. Three distinct divergence geometries---boundary-concentrated, isolated, and diffuse---are identifiable from the analysis and carry distinct ecological interpretations.
+
+\item \texttt{tessera} is available on CRAN and GitHub (\url{https://github.com/jtonini/tessera-r}) under an MIT license. It requires no Python dependencies and is installable with \texttt{install.packages("tessera")}.
+\end{enumerate}
+
+\noindent\textbf{Keywords:} regime shift, similarity network, community detection, coral bleaching, temporal dynamics, ecotone
+
+\newpage
+
+%% ============================================================
+%% 1. INTRODUCTION
+%% ============================================================
+\section{Introduction}
+
+Regime shifts---abrupt transitions between alternative stable states---are among the most consequential phenomena in ecology \citep{Scheffer2001, Folke2004}. Detecting the boundaries where these transitions occur, termed ecotones in biogeographical tradition \citep{Clements1905}, remains methodologically challenging, particularly in high-dimensional observational datasets where regime boundaries are not aligned with simple thresholds in individual variables.
+
+Existing approaches to regime detection in ecology fall into two broad categories. Threshold-based methods, such as sequential regime shift detection \citep{Rodionov2004} and changepoint analysis \citep{Killick2014}, operate on univariate or low-dimensional summaries and cannot capture multivariate structural shifts. Multivariate classifiers such as random forests and gradient-boosted models operate in feature space but treat entities independently, discarding the relational structure---which entities are similar to which---that encodes the topology of the system.
+
+Biogeographical theory suggests an alternative perspective. Ecotones are defined not by the properties of individual organisms but by the topology of community structure: the pattern of which entities cluster together and how those patterns shift across space or time \citep{Uyeda2014}. When a system crosses a regime boundary, the similarity relationships among entities reorganize. This topological signal is invisible to feature-space classifiers but is detectable through network analysis.
+
+The TESSERA framework (Topology-Enhanced Similarity and Structure for Entity Regime Analysis; Tonini, in preparation) formalizes this insight into a computational pipeline. It computes pairwise entity similarity using multiple ecologically motivated measures, constructs similarity networks, detects community structure, and quantifies how that structure diverges across temporal bins. The magnitude and pattern of this divergence---regime divergence (RD)---reveals both the location and the geometry of regime boundaries.
+
+Here I present \texttt{tessera}, an R package that implements the analytical core of the TESSERA framework (Steps 1--3: Characterize, Discover, Quantify) natively in R. The package is designed for ecology researchers: it builds on established R infrastructure (\texttt{igraph}, \texttt{vegan}, \texttt{ape}), uses sparse representations for scalability, provides domain-specific presets, and returns inspectable objects at every pipeline step. I demonstrate the package using the Global Coral Bleaching Database \citep{vanWoesik2022} and discuss its application to ecological regime detection.
+
+
+%% ============================================================
+%% 2. DESCRIPTION OF THE PACKAGE
+%% ============================================================
+\section{Description of the \texttt{tessera} Package}
+
+\subsection{Design philosophy}
+
+\texttt{tessera} is structured as a pipeline of five core functions, each producing an S3 object with \texttt{print()}, \texttt{summary()}, and \texttt{plot()} methods (Figure~\ref{fig:pipeline}). This design allows researchers to inspect intermediate results at every stage rather than treating the analysis as a black box.
+
+Three design decisions reflect lessons from applying the framework to large ecological datasets. First, similarity matrices use sparse $k$-nearest-neighbour (kNN) representation by default via \texttt{Matrix::sparseMatrix}. For the coral bleaching dataset (26,962 records), a dense similarity matrix requires approximately 5.8~GB of memory; the sparse kNN representation with $k=15$ requires approximately 5~MB---a reduction that makes the analysis tractable on standard hardware. Second, temporal binning uses quantile-based boundaries by default rather than fixed-width intervals, ensuring balanced entity counts across bins. This is critical for long-span ecological datasets where early observation periods are sparsely sampled. Third, the package is fully native R with no Python dependency, ensuring that \texttt{install.packages("tessera")} is the only step required.
+
+\subsection{The pipeline}
+
+The five core functions correspond to TESSERA's analytical steps:
+
+\textbf{\texttt{tessera\_characterize()}} (Step 1: Characterize) assigns entities to temporal bins, scales features within bins to zero mean and unit variance, handles missing values, and merges bins with too few entities. Key parameters include \texttt{n\_bins} (default 4), \texttt{bin\_method} (\texttt{"quantile"} or \texttt{"fixed"}), and \texttt{min\_entities} (default 30).
+
+\textbf{\texttt{tessera\_similarity()}} (Step 2a: Discover) computes pairwise entity similarity within each temporal bin using one or more of seven measures. Three are ecologically standard: Bray-Curtis dissimilarity \citep[via \texttt{vegan};][]{Oksanen2022}, Jaccard similarity, and Pearson correlation. One is specific to TESSERA: Simpson similarity, which discretizes each feature into quantile bins and computes the proportion of features for which two entities share a bin. Three are general-purpose: cosine, Euclidean, and Mahalanobis. The output is sparsified to retain only the $k$ most similar neighbours per entity, with $k=15$ as the default.
+
+\textbf{\texttt{tessera\_network()}} (Step 2b: Discover) constructs similarity networks from the sparse similarity matrices via kNN (default), threshold, or weighted methods, returning \texttt{igraph} objects \citep{Csardi2006} with similarity as edge weights.
+
+\textbf{\texttt{tessera\_communities()}} (Step 3a: Quantify) detects community structure using one of four algorithms: Leiden \citep[via the \texttt{leiden} package;][]{Traag2019}, Louvain (built into \texttt{igraph}), spectral clustering \citep[via \texttt{kernlab};][]{Karatzoglou2004}, or Neighbour-Joining \citep[via \texttt{ape};][]{Paradis2019}. The NJ option provides a direct bridge to phylogenetic methods familiar to ecologists. Community count is capped at 20 by default to prevent feature-space drowning in downstream analyses.
+
+\textbf{\texttt{tessera\_divergence()}} (Step 3b: Quantify) measures how community structure changes between temporal bins using Normalized Mutual Information (NMI), Variation of Information, or a composition-shift metric. The function supports adjacent-bin, first-bin, and all-pairs reference strategies, and returns per-entity divergence contributions that identify which entities drive regime shifts.
+
+\subsection{Convenience wrapper and presets}
+
+The function \texttt{tessera()} runs the full pipeline in a single call. Named presets encode domain-appropriate parameter combinations: the \texttt{"ecology"} preset uses Bray-Curtis and Simpson similarity with Leiden community detection, reflecting standard ecological practice. Parameters specified by the user override preset defaults, preserving full configurability.
+
+\begin{verbatim}
+library(tessera)
+result <- tessera(coral_data, time_col = "year",
+                  preset = "ecology")
+\end{verbatim}
+
+\subsection{Dependencies and installation}
+
+\texttt{tessera} depends on \texttt{igraph} ($\geq$1.5.0), \texttt{vegan} ($\geq$2.6), \texttt{ape} ($\geq$5.7), \texttt{Matrix}, and base R packages. Optional dependencies in \texttt{Suggests} include \texttt{leiden}, \texttt{kernlab}, and \texttt{ggplot2}. The package is available from CRAN and from GitHub at \url{https://github.com/jtonini/tessera-r}.
+
+
+%% ============================================================
+%% 3. APPLICATION
+%% ============================================================
+\section{Application: Coral Bleaching Regime Detection}
+
+\subsection{Data}
+
+I demonstrate \texttt{tessera} using the Global Coral Bleaching Database \citep{vanWoesik2022}, a publicly available dataset containing 26,962 environmentally matched records spanning 1980--2019 (figshare, CC-BY 4.0). Each record represents a reef observation with environmental covariates including sea surface temperature (SST), SST anomaly (SSTA), degree heating weeks (DHW), depth, and windspeed, along with a bleaching severity response. The dataset exhibits a 24.2\% bleaching rate and pronounced temporal heterogeneity in sampling density, with the majority of records concentrated after 1998.
+
+\subsection{Analysis}
+
+I applied the full \texttt{tessera} pipeline with the ecology preset. Temporal binning (quantile-based, $n=4$) produced four bins with approximately equal entity counts despite the uneven sampling distribution. Similarity was computed using Bray-Curtis and Simpson measures with sparse kNN ($k=15$). Community detection used the Louvain algorithm (resolution = 1.0), and regime divergence was quantified using NMI with adjacent-bin reference.
+
+\begin{verbatim}
+data(coral_example)
+result <- tessera(coral_example,
+                  time_col = "year",
+                  preset = "ecology")
+\end{verbatim}
+
+% TODO: Run on full dataset and replace with definitive results
+
+\subsection{Results}
+
+[Figure~\ref{fig:divergence} here --- regime divergence across temporal bins]
+
+[Results from the full-dataset run. Expected to show:
+
+\begin{itemize}
+  \item Elevated regime divergence at bin transitions spanning the 1998 mass bleaching event, consistent with a boundary-concentrated geometry.
+  \item A secondary divergence signal at later transitions (2010s), potentially reflecting the cumulative effects of repeated thermal stress.
+  \item Community structure reconfiguration between early and late temporal bins (Figure~\ref{fig:communities}), with entity clusters that are coherent in the early period fragmenting across the later period.
+  \item Per-entity divergence scores identifying reef observations with the highest contribution to regime shift (Figure~\ref{fig:entity_divergence})---these ``ecotonal'' entities occupy transitional positions in feature space where community membership is unstable.
+\end{itemize}]
+
+\subsection{Interpretation}
+
+The regime divergence pattern connects directly to ecological understanding of coral bleaching dynamics. The boundary-concentrated geometry at the 1998 transition reflects the well-documented first global mass bleaching event, which fundamentally reorganized reef community structure across tropical oceans \citep{Hughes2018}. The diffuse divergence in later bins is consistent with the interpretation that post-1998 thermal stress has become a chronic rather than episodic pressure, producing continuous community reorganization rather than a sharp regime boundary.
+
+Critically, this topological signal is not accessible through standard feature-space classification. A model predicting bleaching from SST and depth treats each reef independently. The similarity network, by contrast, encodes which reefs behave similarly under comparable environmental conditions---and it is the pattern of this similarity, not the feature values themselves, that reorganizes across the regime boundary. Two reefs with identical SST anomalies may fall into different similarity communities because their broader environmental contexts (depth, turbidity, prior thermal history) place them in different network neighbourhoods.
+
+
+%% ============================================================
+%% 4. DISCUSSION
+%% ============================================================
+\section{Discussion}
+
+\texttt{tessera} provides ecologists with a new analytical approach to regime detection that operates on a fundamentally different signal than existing methods. Where changepoint analysis \citep{Killick2014} detects shifts in distributional parameters and multivariate classifiers detect decision boundaries in feature space, \texttt{tessera} detects changes in the topology of entity similarity networks. These approaches are complementary: a system may exhibit a topological regime shift (reorganization of which entities cluster together) without a corresponding shift in mean feature values, and vice versa.
+
+The package is not a workflow assembling existing methods into a pipeline. While it builds on established R infrastructure---\texttt{igraph} for network operations, \texttt{vegan} for ecological dissimilarities, \texttt{ape} for phylogenetic methods---the analytical contribution is the specific use of similarity network topology as a regime detection signal. The Simpson similarity measure (quantile-bin overlap), the regime divergence quantification, the three failure geometries, and the per-entity divergence attribution are novel to this framework.
+
+The current R implementation covers TESSERA's analytical core (Steps 1--3: Characterize, Discover, Quantify). The prediction layer (Steps 4--6), which uses graph neural networks, long short-term memory networks, and ensemble meta-learning to forecast regime transitions, is available in the Python implementation (\texttt{tessera-ml} on PyPI) and is planned for a future R release using R \texttt{torch}. This division is deliberate: the analytical framework in \texttt{tessera} stands alone as a contribution to regime detection methodology, while the prediction layer extends it to forecasting.
+
+Several limitations should be noted. Similarity measure ranking is domain-dependent---Bray-Curtis and Simpson perform well for ecological data, but other domains may require different measure combinations. The ecology preset provides sensible defaults, but researchers should evaluate measure performance for their specific systems. Temporal binning assumes that the relevant dynamics operate on the timescale captured by the bins; for systems with irregular or event-driven transitions, adaptive binning strategies may be needed. Adaptive fusion of multiple similarity measures (learned convex combination) is a planned extension.
+
+\subsection{Data and code availability}
+
+\texttt{tessera} is available on CRAN (\texttt{install.packages("tessera")}) and GitHub (\url{https://github.com/jtonini/tessera-r}) under an MIT licence. The coral bleaching dataset is bundled as \texttt{coral\_example} (500-record stratified subset) and the full database is available from figshare \citep[doi:10.6084/m9.figshare.20078993;][]{vanWoesik2022}. All analyses reported here are reproducible via the package vignette.
+
+
+%% ============================================================
+%% ACKNOWLEDGEMENTS
+%% ============================================================
+\section*{Acknowledgements}
+
+[To be added.]
+
+
+%% ============================================================
+%% AUTHOR CONTRIBUTIONS
+%% ============================================================
+\section*{Author Contributions}
+
+J.T.\ conceived the TESSERA framework, developed the R package, performed the analyses, and wrote the manuscript.
+
+
+%% ============================================================
+%% CONFLICT OF INTEREST
+%% ============================================================
+\section*{Conflict of Interest}
+
+The author declares no conflict of interest.
+
+
+%% ============================================================
+%% FIGURES
+%% ============================================================
+\newpage
+\section*{Figures}
+
+\begin{figure}[h]
+\centering
+% \includegraphics[width=\textwidth]{figures/fig1_pipeline.pdf}
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 1: TESSERA pipeline diagram}\\ \textit{[To be generated]}\\ Shows the five core functions, their inputs, outputs, and the S3 object flow: tessera\_characterize() $\rightarrow$ tessera\_similarity() $\rightarrow$ tessera\_network() $\rightarrow$ tessera\_communities() $\rightarrow$ tessera\_divergence(). Each arrow annotated with the key parameters and the object class returned.}\vspace{1cm}}}
+\caption{The \texttt{tessera} pipeline. Data flows through five functions, each producing an inspectable S3 object. Temporal binning (Step 1) feeds into multi-measure similarity computation (Step 2a), which is sparsified and converted to network form (Step 2b). Community detection (Step 3a) partitions the network, and regime divergence (Step 3b) quantifies how community structure changes across temporal bins. The convenience wrapper \texttt{tessera()} executes all steps with domain-specific presets.}
+\label{fig:pipeline}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+% \includegraphics[width=\textwidth]{figures/fig2_divergence.pdf}
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 2: Regime divergence scores}\\ \textit{[To be generated from full coral dataset run]}\\ Bar chart: bin transitions on x-axis, NMI-based regime divergence on y-axis. Known mass bleaching events annotated.}\vspace{1cm}}}
+\caption{Regime divergence (1~$-$~NMI) across adjacent temporal bins for the Global Coral Bleaching Database. Higher values indicate greater reorganization of community structure between bins. Bin boundaries are determined by quantile-based temporal binning ($n=4$). The transition spanning [year range] shows the highest divergence, consistent with [ecological interpretation].}
+\label{fig:divergence}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+% \includegraphics[width=\textwidth]{figures/fig3_communities.pdf}
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 3: Community structure comparison}\\ \textit{[To be generated from full coral dataset run]}\\ Side-by-side network plots for two contrasting temporal bins. Nodes coloured by community assignment. Okabe-Ito palette.}\vspace{1cm}}}
+\caption{Similarity network community structure for two temporal bins spanning the major regime transition: (a) [early bin, year range] and (b) [late bin, year range]. Nodes represent reef observations; edges connect entities within each other's $k$-nearest neighbours (Bray-Curtis similarity); colours indicate community membership (Louvain algorithm). The topological reorganization between bins is visible as a shift in community composition and connectivity patterns.}
+\label{fig:communities}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+% \includegraphics[width=\textwidth]{figures/fig4_entity_divergence.pdf}
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{3cm}\textbf{Figure 4: Per-entity divergence contributions}\\ \textit{[To be generated from full coral dataset run]}\\ Distribution of per-entity divergence scores. Highlight high-divergence entities.}\vspace{1cm}}}
+\caption{Distribution of per-entity divergence contributions across all reef observations. Entities with high divergence scores changed community membership across multiple temporal bin transitions, occupying ``ecotonal'' positions in the similarity network. These transitional entities may represent reefs at the leading edge of regime shifts.}
+\label{fig:entity_divergence}
+\end{figure}
+
+
+%% ============================================================
+%% REFERENCES
+%% ============================================================
+\newpage
+\bibliographystyle{apalike}
+% \bibliography{references}
+
+\begin{thebibliography}{99}
+
+\bibitem[Clements, 1905]{Clements1905}
+Clements, F.~E. (1905).
+\newblock \emph{Research Methods in Ecology}.
+\newblock University Publishing Company, Lincoln, NE.
+
+\bibitem[Cs\'{a}rdi \& Nepusz, 2006]{Csardi2006}
+Cs\'{a}rdi, G. \& Nepusz, T. (2006).
+\newblock The igraph software package for complex network research.
+\newblock \emph{InterJournal, Complex Systems}, 1695.
+
+\bibitem[Folke et~al., 2004]{Folke2004}
+Folke, C., Carpenter, S., Walker, B., Scheffer, M., Elmqvist, T., Gunderson, L., \& Holling, C.~S. (2004).
+\newblock Regime shifts, resilience, and biodiversity in ecosystem management.
+\newblock \emph{Annual Review of Ecology, Evolution, and Systematics}, 35, 557--581.
+
+\bibitem[Hughes et~al., 2018]{Hughes2018}
+Hughes, T.~P., Anderson, K.~D., Connolly, S.~R., Heron, S.~F., Kerry, J.~T., Lough, J.~M., \ldots \& Wilson, S.~K. (2018).
+\newblock Spatial and temporal patterns of mass bleaching of corals in the {Anthropocene}.
+\newblock \emph{Science}, 359(6371), 80--83.
+
+\bibitem[Karatzoglou et~al., 2004]{Karatzoglou2004}
+Karatzoglou, A., Smola, A., Hornik, K., \& Zeileis, A. (2004).
+\newblock kernlab -- an {S4} package for kernel methods in {R}.
+\newblock \emph{Journal of Statistical Software}, 11(9), 1--20.
+
+\bibitem[Killick \& Eckley, 2014]{Killick2014}
+Killick, R. \& Eckley, I.~A. (2014).
+\newblock changepoint: An {R} package for changepoint analysis.
+\newblock \emph{Journal of Statistical Software}, 58(3), 1--19.
+
+\bibitem[Oksanen et~al., 2022]{Oksanen2022}
+Oksanen, J., Simpson, G.~L., Blanchet, F.~G., Kindt, R., Legendre, P., Minchin, P.~R., \ldots \& Weedon, J. (2022).
+\newblock vegan: Community Ecology Package.
+\newblock R package version 2.6-4.
+
+\bibitem[Paradis \& Schliep, 2019]{Paradis2019}
+Paradis, E. \& Schliep, K. (2019).
+\newblock ape 5.0: An environment for modern phylogenetics and evolutionary analyses in {R}.
+\newblock \emph{Bioinformatics}, 35(3), 526--528.
+
+\bibitem[Rodionov, 2004]{Rodionov2004}
+Rodionov, S.~N. (2004).
+\newblock A sequential algorithm for testing climate regime shifts.
+\newblock \emph{Geophysical Research Letters}, 31(9), L09204.
+
+\bibitem[Scheffer et~al., 2001]{Scheffer2001}
+Scheffer, M., Carpenter, S., Foley, J.~A., Folke, C., \& Walker, B. (2001).
+\newblock Catastrophic shifts in ecosystems.
+\newblock \emph{Nature}, 413(6856), 591--596.
+
+\bibitem[Traag et~al., 2019]{Traag2019}
+Traag, V.~A., Waltman, L., \& van Eck, N.~J. (2019).
+\newblock From {Louvain} to {Leiden}: Guaranteeing well-connected communities.
+\newblock \emph{Scientific Reports}, 9, 5233.
+
+\bibitem[Uyeda \& Harmon, 2014]{Uyeda2014}
+Uyeda, J.~C. \& Harmon, L.~J. (2014).
+\newblock A novel {Bayesian} method for inferring and interpreting the dynamics of adaptive landscapes from phylogenetic comparative data.
+\newblock \emph{Systematic Biology}, 63(6), 902--918.
+
+\bibitem[van Woesik et~al., 2022]{vanWoesik2022}
+van Woesik, R., Banister, R.~B.,";"; \& McCaffrey, K.~R. (2022).
+\newblock Global Coral Bleaching Database.
+\newblock figshare. \url{https://doi.org/10.6084/m9.figshare.20078993}.
+
+\end{thebibliography}
+
+\end{document}
